@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EPISTEME ESPORTS - 3D MLBB Macro Board</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; overflow: hidden; height: 100vh; }
+    #app-container { display: flex; width: 100vw; height: 100vh; }
+    
+    /* Sidebar */
+    #sidebar { width: 360px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; z-index: 10; }
+    .sidebar-header { padding: 16px; background: #0f172a; border-bottom: 1px solid #334155; }
+    .sidebar-header h1 { font-size: 1.1rem; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; }
+    .sidebar-header p { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+    
+    .curriculum-list { flex: 1; overflow-y: auto; padding: 12px; }
+    .lesson-group { margin-bottom: 16px; }
+    .lesson-title { font-size: 0.85rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; margin-bottom: 8px; border-left: 3px solid #f59e0b; padding-left: 8px; }
+    .segment-card { background: #334155; padding: 10px; border-radius: 6px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; }
+    .segment-card:hover { background: #475569; border-left: 3px solid #38bdf8; }
+    .segment-card.active { background: #1e3a8a; border-left: 3px solid #60a5fa; }
+    .segment-name { font-size: 0.8rem; font-weight: 600; color: #f8fafc; }
+    .segment-desc { font-size: 0.7rem; color: #cbd5e1; margin-top: 4px; line-height: 1.3; }
+
+    /* Canvas / Board Viewport */
+    #board-container { flex: 1; position: relative; background: #020617; }
+    #canvas3d { width: 100%; height: 100%; display: block; }
+
+    /* Floating Toolbar */
+    #controls { position: absolute; top: 16px; left: 16px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px); padding: 12px; border-radius: 8px; border: 1px solid #334155; display: flex; gap: 8px; z-index: 5; }
+    .btn { background: #334155; color: #f8fafc; border: 1px solid #475569; padding: 8px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .btn:hover { background: #475569; color: #38bdf8; }
+    .btn-primary { background: #0284c7; border-color: #0369a1; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-toggle { background: #d97706; border-color: #b45309; }
+    .btn-toggle.active { background: #16a34a; border-color: #15803d; }
+    .btn-danger { background: #be123c; border-color: #9f1239; }
+    .btn-danger:hover { background: #9f1239; }
+
+    /* Overlay HUD */
+    #hud-info { position: absolute; bottom: 16px; left: 16px; background: rgba(15, 23, 42, 0.9); padding: 12px 16px; border-radius: 8px; border: 1px solid #334155; max-width: 400px; pointer-events: none; }
+    #hud-info h3 { font-size: 0.9rem; color: #38bdf8; margin-bottom: 4px; }
+    #hud-info p { font-size: 0.75rem; color: #94a3b8; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Sidebar Curriculum Navigation -->
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <h1>EPISTEME Tactical Hub</h1>
+        <p>16-Segment Squad Macro Curriculum</p>
+      </div>
+      <div class="curriculum-list" id="curriculum-container"></div>
+    </div>
+
+    <!-- 3D Interactive Viewport -->
+    <div id="board-container">
+      <div id="controls">
+        <button class="btn btn-primary" onclick="resetCamera('top')">Top View</button>
+        <button class="btn btn-primary" onclick="resetCamera('iso')">3D Angle</button>
+        <button class="btn btn-toggle" id="draw-btn" onclick="toggleDrawMode()">Draw Mode: OFF</button>
+        <button class="btn btn-danger" onclick="clearDrawings()">Clear Arrows</button>
+        <button class="btn btn-danger" onclick="resetBoard()">Reset Tokens</button>
+      </div>
+      
+      <div id="hud-info">
+        <h3 id="active-title">Lesson Overview</h3>
+        <p id="active-desc">Select a segment on the left sidebar or toggle Draw Mode to sketch rotation paths and tactical arrows.</p>
+      </div>
+
+      <canvas id="canvas3d"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // --- Curriculum Data ---
+    const curriculum = [
+      {
+        lesson: "Lesson 1: Foundation & Trio Synergy",
+        segments: [
+          { name: "1. Mid Lane Priority & Fast Level 2", desc: "Roam & Mid clear first wave instantly to secure litho/river vision." },
+          { name: "2. Jungle Pathing & Buff Protection", desc: "Adapt jungle pathing based on side-lane matchups and enemy invade potential." },
+          { name: "3. 3-Man Rotation Dynamics", desc: "Roamer, Mid, and Jungler stick as a tight triangle during early rotations." },
+          { name: "4. Level 4 Power Spikes", desc: "Coordinate ganks instantly when core skills unlocked at level 4." }
+        ]
+      },
+      {
+        lesson: "Lesson 2: Side-Lane Control & Discipline",
+        segments: [
+          { name: "5. EXP Lane Wave Freezing", desc: "Hold minion waves near turret to starve enemy EXP lander of gold/XP." },
+          { name: "6. Gold Lane Protection & Ganking", desc: "Rotate trio heavily toward Gold Lane to accelerate marksman core items." },
+          { name: "7. Cut-Wave & Rotation Timing", desc: "Clear minions behind tier-1 turrets to create 10-second rotation windows." },
+          { name: "8. Turtle/Lord Side Lane Sacrifices", desc: "Opposite side-laner gives up wave priority to join team objective setups." }
+        ]
+      },
+      {
+        lesson: "Lesson 3: Objective Setup & Vision Control",
+        segments: [
+          { name: "9. 45-Second Objective Bush Setup", desc: "Occupy river bushes 45s before Turtle/Lord spawns to deny vision." },
+          { name: "10. Zone & Chokepoint Control", desc: "Tank and EXP laner seal off entry chokepoints while core takes objective." },
+          { name: "11. Baiting vs. Bursting Lord", desc: "Force enemy reactions by starting Lord, then turning for a teamfight wipe." },
+          { name: "12. Retribution Steal Defense", desc: "Crowd control enemy jungler outside retri range before finalizing objective." }
+        ]
+      },
+      {
+        lesson: "Lesson 4: High-Ground Siege Execution",
+        segments: [
+          { name: "13. 3-Lane Sync Pressure", desc: "Time wave clears so all 3 lane minion waves hit enemy base simultaneously." },
+          { name: "14. Turret Targeting Discipline", desc: "Focus base turrets directly during Lord push instead of chasing kills." },
+          { name: "15. Inhibitor Turret Defense Setup", desc: "Clear waves safely from inside base; never over-extend without vision." },
+          { name: "16. Post-Fight Reset & Resource Drain", desc: "Steal enemy jungle camps immediately after winning a high-ground fight." }
+        ]
+      }
+    ];
+
+    // Populating Sidebar
+    const container = document.getElementById('curriculum-container');
+    curriculum.forEach(group => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'lesson-group';
+      groupEl.innerHTML = `<div class="lesson-title">${group.lesson}</div>`;
+      
+      group.segments.forEach(seg => {
+        const card = document.createElement('div');
+        card.className = 'segment-card';
+        card.innerHTML = `<div class="segment-name">${seg.name}</div><div class="segment-desc">${seg.desc}</div>`;
+        card.onclick = () => {
+          document.querySelectorAll('.segment-card').forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          document.getElementById('active-title').innerText = seg.name;
+          document.getElementById('active-desc').innerText = seg.desc;
+        };
+        groupEl.appendChild(card);
+      });
+      container.appendChild(groupEl);
+    });
+
+    // --- Three.js Setup ---
+    const canvas = document.getElementById('canvas3d');
+    const boardContainer = document.getElementById('board-container');
+    
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020617);
+
+    const camera = new THREE.PerspectiveCamera(45, boardContainer.clientWidth / boardContainer.clientHeight, 0.1, 1000);
+    camera.position.set(0, 40, 30);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(boardContainer.clientWidth, boardContainer.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2.1;
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0x38bdf8, 0.8);
+    dirLight.position.set(20, 40, 20);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    // --- Map Board Floor (Land & Lanes) ---
+    const mapGroup = new THREE.Group();
+    
+    // Base Ground
+    const groundGeo = new THREE.PlaneGeometry(30, 30);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    mapGroup.add(ground);
+
+    // Outer Border
+    const borderGeo = new THREE.BoxGeometry(31, 0.5, 31);
+    const borderMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+    const border = new THREE.Mesh(borderGeo, borderMat);
+    border.position.y = -0.3;
+    mapGroup.add(border);
+
+    // Draw Lanes (Mid, Top, Bottom)
+    function createLine(pathPoints, color) {
+      const material = new THREE.LineBasicMaterial({ color, linewidth: 3 });
+      const geometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
+      return new THREE.Line(geometry, material);
+    }
+
+    mapGroup.add(createLine([new THREE.Vector3(-12, 0.1, 12), new THREE.Vector3(12, 0.1, -12)], 0x64748b));
+    mapGroup.add(createLine([new THREE.Vector3(-12, 0.1, 12), new THREE.Vector3(-12, 0.1, -12), new THREE.Vector3(12, 0.1, -12)], 0x64748b));
+    mapGroup.add(createLine([new THREE.Vector3(-12, 0.1, 12), new THREE.Vector3(12, 0.1, 12), new THREE.Vector3(12, 0.1, -12)], 0x64748b));
+
+    // River
+    const riverGeo = new THREE.PlaneGeometry(38, 4);
+    const riverMat = new THREE.MeshBasicMaterial({ color: 0x0284c7, transparent: true, opacity: 0.4 });
+    const river = new THREE.Mesh(riverGeo, riverMat);
+    river.rotation.x = -Math.PI / 2;
+    river.rotation.z = Math.PI / 4;
+    river.position.y = 0.05;
+    mapGroup.add(river);
+
+    // Turtle/Lord Pits
+    const pitGeo = new THREE.CylinderGeometry(2.5, 2.5, 0.2, 16);
+    const pitMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+    const pit1 = new THREE.Mesh(pitGeo, pitMat);
+    pit1.position.set(-4, 0.1, -4);
+    const pit2 = new THREE.Mesh(pitGeo, pitMat);
+    pit2.position.set(4, 0.1, 4);
+    mapGroup.add(pit1);
+    mapGroup.add(pit2);
+
+    scene.add(mapGroup);
+
+    // --- Interactive Tokens ---
+    const tokens = [];
+    const initialPositions = [
+      { name: "Tank/Roam", color: 0x22c55e, pos: [-10, 0.6, 10] },
+      { name: "Mid Laner", color: 0x3b82f6, pos: [-10, 0.6, 8] },
+      { name: "Jungler", color: 0xa855f7, pos: [-8, 0.6, 10] },
+      { name: "EXP Laner", color: 0xeab308, pos: [-12, 0.6, 6] },
+      { name: "Gold Laner", color: 0xec4899, pos: [-6, 0.6, 12] },
+      { name: "Lord/Objective", color: 0xef4444, pos: [0, 0.8, 0] }
+    ];
+
+    function createToken(data) {
+      const group = new THREE.Group();
+      const geo = new THREE.CylinderGeometry(0.8, 0.8, 0.6, 32);
+      const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.3 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      group.add(mesh);
+
+      group.position.set(...data.pos);
+      group.userData = { name: data.name, initialPos: [...data.pos] };
+      scene.add(group);
+      tokens.push(group);
+    }
+
+    initialPositions.forEach(createToken);
+
+    // --- Drawing & Dragging Interaction Engine ---
+    let isDrawMode = false;
+    let isDrawing = false;
+    let startPoint = null;
+    let currentArrow = null;
+    const drawnObjects = [];
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let selectedToken = null;
+    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const planeIntersection = new THREE.Vector3();
+
+    window.toggleDrawMode = function() {
+      isDrawMode = !isDrawMode;
+      const btn = document.getElementById('draw-btn');
+      if (isDrawMode) {
+        btn.innerText = "Draw Mode: ON";
+        btn.classList.add('active');
+        controls.enabled = false;
+      } else {
+        btn.innerText = "Draw Mode: OFF";
+        btn.classList.remove('active');
+        controls.enabled = true;
+      }
+    };
+
+    window.clearDrawings = function() {
+      drawnObjects.forEach(obj => scene.remove(obj));
+      drawnObjects.length = 0;
+    };
+
+    function getIntersectionPoint(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      if (raycaster.ray.intersectPlane(dragPlane, planeIntersection)) {
+        return planeIntersection.clone();
+      }
+      return null;
+    }
+
+    function onMouseDown(e) {
+      if (isDrawMode) {
+        const point = getIntersectionPoint(e);
+        if (point) {
+          isDrawing = true;
+          startPoint = point;
+        }
+        return;
+      }
+
+      // Token Dragging
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(tokens.map(t => t.children[0]));
+
+      if (intersects.length > 0) {
+        selectedToken = intersects[0].object.parent;
+        controls.enabled = false;
+      }
+    }
+
+    function onMouseMove(e) {
+      if (isDrawMode && isDrawing && startPoint) {
+        const currentPoint = getIntersectionPoint(e);
+        if (currentPoint) {
+          if (currentArrow) scene.remove(currentArrow);
+
+          const dir = new THREE.Vector3().subVectors(currentPoint, startPoint);
+          const length = dir.length();
+          if (length > 0.5) {
+            dir.normalize();
+            // Arrow with neon cyan path color
+            currentArrow = new THREE.ArrowHelper(dir, startPoint, length, 0x06b6d4, 1.2, 0.8);
+            scene.add(currentArrow);
+          }
+        }
+        return;
+      }
+
+      // Token Moving
+      if (!selectedToken) return;
+      const point = getIntersectionPoint(e);
+      if (point) {
+        selectedToken.position.x = Math.max(-14, Math.min(14, point.x));
+        selectedToken.position.z = Math.max(-14, Math.min(14, point.z));
+      }
+    }
+
+    function onMouseUp() {
+      if (isDrawMode && isDrawing) {
+        isDrawing = false;
+        if (currentArrow) {
+          drawnObjects.push(currentArrow);
+          currentArrow = null;
+        }
+        startPoint = null;
+        return;
+      }
+
+      selectedToken = null;
+      if (!isDrawMode) controls.enabled = true;
+    }
+
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    // Controls Action
+    window.resetCamera = function(view) {
+      if (view === 'top') {
+        camera.position.set(0, 42, 0.01);
+      } else {
+        camera.position.set(0, 40, 30);
+      }
+      controls.target.set(0, 0, 0);
+      controls.update();
+    };
+
+    window.resetBoard = function() {
+      tokens.forEach(t => {
+        t.position.set(...t.userData.initialPos);
+      });
+    };
+
+    // Render Loop & Resize
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = boardContainer.clientWidth / boardContainer.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(boardContainer.clientWidth, boardContainer.clientHeight);
+    });
+  </script>
+</body>
+</html>
